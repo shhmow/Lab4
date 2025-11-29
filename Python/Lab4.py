@@ -221,7 +221,7 @@ def ECE569_TransInv(T):
     """
     R, p = ECE569_TransToRp(T)
     Rt = np.array(R).T
-    # return (inverse of T using formula from class)
+    return np.r_[np.c_[Rt, -np.dot(Rt, p)], [[0, 0, 0, 1]]]
 
 def ECE569_VecTose3(V):
     """Converts a spatial velocity vector into a 4x4 matrix in se3
@@ -237,7 +237,8 @@ def ECE569_VecTose3(V):
                   [-2,  1,  0, 6],
                   [ 0,  0,  0, 0]])
     """
-    # return (the 4x4 se3 representation of V using formula from class)
+    return np.r_[np.c_[ECE569_VecToso3([V[0], V[1], V[2]]), [V[3], V[4], V[5]]],
+                 [[0, 0, 0, 0]]]
 
 def ECE569_se3ToVec(se3mat):
     """ Converts an se3 matrix into a spatial velocity vector
@@ -253,7 +254,8 @@ def ECE569_se3ToVec(se3mat):
     Output:
         np.array([1, 2, 3, 4, 5, 6])
     """
-    # return (the 6-vector corresponding to se3mat using formula from class)
+    return np.array([se3mat[2][1], se3mat[0][2], se3mat[1][0],
+                     se3mat[0][3], se3mat[1][3], se3mat[2][3]])
 
 def ECE569_Adjoint(T):
     """Computes the ECE569_adjoint representation of a homogeneous transformation
@@ -276,7 +278,8 @@ def ECE569_Adjoint(T):
                   [0, 0,  0, 0, 1,  0]])
     """
     R, p = ECE569_TransToRp(T)
-    # return (the 6x6 adjoint representation of T using formula from class)
+    return np.r_[np.c_[R, np.zeros((3, 3))],
+                 np.c_[np.dot(ECE569_VecToso3(p), R), R]]
 
 def ECE569_MatrixExp6(se3mat):
     """Computes the matrix exponential of an se3 representation of
@@ -299,11 +302,17 @@ def ECE569_MatrixExp6(se3mat):
     se3mat = np.array(se3mat)
     omgtheta = ECE569_so3ToVec(se3mat[0: 3, 0: 3])
     if ECE569_NearZero(np.linalg.norm(omgtheta)):
-        # return ...
+        # Pure translation case
+        return np.r_[np.c_[np.eye(3), se3mat[0: 3, 3]], [[0, 0, 0, 1]]]
     else:
         theta = ECE569_AxisAng3(omgtheta)[1]
         omgmat = se3mat[0: 3, 0: 3] / theta
-        # return ...
+        # G = I*theta + (1 - cos(theta))*[omega] + (theta - sin(theta))*[omega]^2
+        G = np.eye(3) * theta + (1 - np.cos(theta)) * omgmat \
+            + (theta - np.sin(theta)) * np.dot(omgmat, omgmat)
+        return np.r_[np.c_[ECE569_MatrixExp3(se3mat[0: 3, 0: 3]),
+                           np.dot(G, se3mat[0: 3, 3]) / theta],
+                     [[0, 0, 0, 1]]]
 
 def ECE569_MatrixLog6(T):
     """Computes the matrix logarithm of a homogeneous transformation matrix
@@ -325,10 +334,16 @@ def ECE569_MatrixLog6(T):
     R, p = ECE569_TransToRp(T)
     omgmat = ECE569_MatrixLog3(R)
     if np.array_equal(omgmat, np.zeros((3, 3))):
-        # return ...
+        # Pure translation case
+        return np.r_[np.c_[np.zeros((3, 3)), p], [[0, 0, 0, 0]]]
     else:
         theta = np.arccos((np.trace(R) - 1) / 2.0)
-        # return ...
+        omgmat_normalized = omgmat / theta
+        # G^-1 = I/theta - [omega_hat]/2 + (1/theta - cot(theta/2)/2)*[omega_hat]^2
+        Ginv = np.eye(3) / theta - omgmat_normalized / 2.0 \
+               + (1.0 / theta - 1.0 / np.tan(theta / 2.0) / 2.0) \
+               * np.dot(omgmat_normalized, omgmat_normalized)
+        return np.r_[np.c_[omgmat, np.dot(Ginv, p) * theta], [[0, 0, 0, 0]]]
 
 
 '''
@@ -365,7 +380,7 @@ def ECE569_FKinBody(M, Blist, thetalist):
     """
     T = np.array(M)
     for i in range(len(thetalist)):
-        # T = np.dot(T, ...
+        T = np.dot(T, ECE569_MatrixExp6(ECE569_VecTose3(Blist[:, i] * thetalist[i])))
     return T
 
 def ECE569_FKinSpace(M, Slist, thetalist):
@@ -398,7 +413,7 @@ def ECE569_FKinSpace(M, Slist, thetalist):
     """
     T = np.array(M)
     for i in range(len(thetalist) - 1, -1, -1):
-        # T = np.dot(..., T)
+        T = np.dot(ECE569_MatrixExp6(ECE569_VecTose3(Slist[:, i] * thetalist[i])), T)
     return T
 
 '''
@@ -432,8 +447,9 @@ def ECE569_JacobianBody(Blist, thetalist):
     Jb = np.array(Blist).copy().astype(float)
     T = np.eye(4)
     for i in range(len(thetalist) - 2, -1, -1):
-        # T = np.dot(T, ...
-        # Jb[:, i] = ...
+        # T_i = e^{-B_{i+1} θ_{i+1}} * ... * e^{-B_n θ_n}
+        T = np.dot(T, ECE569_MatrixExp6(ECE569_VecTose3(-Blist[:, i + 1] * thetalist[i + 1])))
+        Jb[:, i] = np.dot(ECE569_Adjoint(T), Blist[:, i])
     return Jb
 
 '''
@@ -490,15 +506,15 @@ def ECE569_IKinBody(Blist, M, T, thetalist0, eomg, ev):
     maxiterations = 20
     # TODO: calculate Vb
     # Hint: use four of the ECE569 functions from earlier
-    # Vb = ...
+    Vb = ECE569_se3ToVec(ECE569_MatrixLog6(np.dot(ECE569_TransInv(ECE569_FKinBody(M, Blist, thetalist)), T)))
     err = np.linalg.norm([Vb[0], Vb[1], Vb[2]]) > eomg \
           or np.linalg.norm([Vb[3], Vb[4], Vb[5]]) > ev
     while err and i < maxiterations:
         # TODO: update thetalist
         # Hint: pseudinverse is given by np.linalg.pinv
-        # thetalist = thetalist + ...
+        thetalist = thetalist + np.dot(np.linalg.pinv(ECE569_JacobianBody(Blist, thetalist)), Vb)
         i += 1
-        # Vb = ...
+        Vb = ECE569_se3ToVec(ECE569_MatrixLog6(np.dot(ECE569_TransInv(ECE569_FKinBody(M, Blist, thetalist)), T)))
         err = np.linalg.norm([Vb[0], Vb[1], Vb[2]]) > eomg \
               or np.linalg.norm([Vb[3], Vb[4], Vb[5]]) > ev
     return (thetalist, not err)
@@ -522,30 +538,44 @@ def main():
 
     ### Step 1: Trajectory Generation
 
-    # TODO: replace T, xd, yd with your our lissajous curve
-    # T = 2*np.pi
-    # t = np.linspace(0, T, 100)
-    # xd = 0.16*np.sin(t)
-    # yd = 0.08*np.sin(2*t)
+    T = 2*np.pi
+    A = 0.15
+    B = 0.15
+    a = 1
+    b = 2
+
+    t_arc = np.linspace(0, T, 1000)
+    xd = A*np.sin(a*t_arc)
+    yd = B*np.sin(b*t_arc)
 
     # calculate the arc length
     d = 0
-    for i in range(1, len(t)):
-        # d += ...
-    
-    # TODO: replace tfinal with your code
-    # tfinal = 5
+    for i in range(1, len(t_arc)):
+        d += np.sqrt((xd[i] - xd[i-1])**2 + (yd[i] - yd[i-1])**2)
+
+    min_tfinal = d / 0.25
+    tfinal = max(min_tfinal + 1, 8.0)
+    if tfinal > 15:
+        tfinal = 15
     # calculate average velocity
     c = d/tfinal
+
+    ta = 0.15 * tfinal
 
     # forward euler to calculate alpha
     dt = 0.002
     t = np.arange(0, tfinal, dt)
     alpha = np.zeros(len(t))
     for i in range(1, len(t)):
-        # xdot = ...
-        # ydot = ...
-        # alpha[i] = alpha[i-1] + ... (equation 7)
+        xdot = A * a * np.cos(a * alpha[i-1])
+        ydot = B * b * np.cos(b * alpha[i-1])
+        speed = np.sqrt(xdot**2 + ydot**2)
+        g_val = g(t[i-1], tfinal, ta)
+        if speed > 1e-10:
+            alpha_dot = (c * g_val) / speed
+        else:
+            alpha_dot = 0
+        alpha[i] = alpha[i-1] + alpha_dot * dt
 
     # plot alpha vs t
     plt.plot(t, alpha,'b-',label='alpha')
@@ -557,10 +587,9 @@ def main():
     plt.grid()
     plt.show()
 
-    # TODO: repalce with your own lissaous curve
     # rescale our trajectory with alpha
-    # x = 0.16*np.sin(alpha)
-    # y = 0.08*np.sin(2*alpha)
+    x = A*np.sin(a*alpha)
+    y = B*np.sin(b*alpha)
 
     # calculate velocity
     xdot = np.diff(x)/dt
@@ -590,7 +619,7 @@ def main():
                   [0, 0, 1, W1 + W2],
                   [0, 1, 0, H1 - H2],
                   [0, 0, 0, 1]])
-    
+
     S1 = np.array([0, 0, 1, 0, 0, 0])
     S2 = np.array([0, 1, 0, -H1, 0, 0])
     S3 = np.array([0, 1, 0, -H1, 0, L1])
@@ -598,7 +627,7 @@ def main():
     S5 = np.array([0, 0, -1, -W1, L1+L2, 0])
     S6 = np.array([0, 1, 0, H2-H1, 0, L1+L2])
     S = np.array([S1, S2, S3, S4, S5, S6]).T
-    
+
     B1 = np.linalg.inv(ECE569_Adjoint(M))@S1
     B2 = np.linalg.inv(ECE569_Adjoint(M))@S2
     B3 = np.linalg.inv(ECE569_Adjoint(M))@S3
@@ -608,9 +637,8 @@ def main():
     B = np.array([B1, B2, B3, B4, B5, B6]).T
 
     theta0 = np.array([-1.6800, -1.4018, -1.8127, -2.9937, -0.8857, -0.0696])
-    
+
     # perform forward kinematics using ECE569_FKinSpace and ECE569_FKinBody
-    # TODO: implement these functions
     T0_space = ECE569_FKinSpace(M, S, theta0)
     print(f'T0_space: {T0_space}')
     T0_body = ECE569_FKinBody(M, B, theta0)
@@ -622,8 +650,12 @@ def main():
     # calculate Tsd for each time step
     Tsd = np.zeros((4, 4, len(t)))
     for i in range(len(t)):
-        # Tsd[:, :, i] = ...
-        
+        Td = np.eye(4)
+        Td[0, 3] = x[i]
+        Td[1, 3] = y[i]
+        Td[2, 3] = 0
+        Tsd[:, :, i] = T0 @ Td
+
     # plot p(t) vs t in the {s} frame
     xs = Tsd[0, 3, :]
     ys = Tsd[1, 3, :]
@@ -632,7 +664,7 @@ def main():
     ax.plot(xs, ys, zs, 'b-',label='p(t)')
     ax.plot(xs[0], ys[0], zs[0], 'go',label='start')
     ax.plot(xs[-1], ys[-1], zs[-1], 'rx',label='end')
-    ax.set_title('Trajectory in s frame')
+    ax.set_title('Trajectory in {s} Frame')
     ax.set_xlabel('x (m)')
     ax.set_ylabel('y (m)')
     ax.set_zlabel('z (m)')
@@ -648,7 +680,6 @@ def main():
     eomg = 1e-6
     ev = 1e-6
 
-    # TODO: implement the ECE569_IKinBody function
     thetaSol, success = ECE569_IKinBody(B, M, Tsd[:,:,0], initialguess, eomg, ev)
     if not success:
         raise Exception(f'Failed to find a solution at index {0}')
@@ -656,11 +687,8 @@ def main():
 
     # when i=1...,N-1
     for i in range(1, len(t)):
-        # TODO: use previous solution as current guess
-        # initialguess = ...
-
-        # TODO: calculate thetaSol for Tsd[:,:,i] with initial guess
-        # thetaSol, success = ...
+        initialguess = thetaAll[:, i-1]
+        thetaSol, success = ECE569_IKinBody(B, M, Tsd[:,:,i], initialguess, eomg, ev)
         if not success:
             raise Exception(f'Failed to find a solution at index {i}')
         thetaAll[:, i] = thetaSol
@@ -675,7 +703,7 @@ def main():
     plt.plot(t[1:], dj[5], 'y-',label='joint 6')
     plt.xlabel('t (seconds)')
     plt.ylabel('first order difference')
-    plt.title('Joint angles first order difference')
+    plt.title('First Order Difference in Joint Angles')
     plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
     plt.grid()
     plt.tight_layout()
@@ -684,9 +712,8 @@ def main():
     # verify that the joint angles will trace out our trajectory
     actual_Tsd = np.zeros((4, 4, len(t)))
     for i in range(len(t)):
-        # TODO: use forward kinematics to calculate Tsd from our thetaAll
-        # actual_Tsd[:,:,i] = ...
-    
+        actual_Tsd[:,:,i] = ECE569_FKinBody(M, B, thetaAll[:, i])
+
     xs = actual_Tsd[0, 3, :]
     ys = actual_Tsd[1, 3, :]
     zs = actual_Tsd[2, 3, :]
@@ -697,16 +724,15 @@ def main():
     ax.set_xlabel('x (m)')
     ax.set_ylabel('y (m)')
     ax.set_zlabel('z (m)')
-    ax.set_title('Verified Trajectory in s frame')
+    ax.set_title('Verified Trajectory in {s} Frame')
     ax.legend()
     plt.show()
-    
+
     # (3e) verify the robot does not enter kinematic singularity
     # by plotting the determinant of the body jacobian
     body_dets = np.zeros(len(t))
-    # for i in range(len(t)):
-        # TODO: complete this plot
-        # body_dets[i] = np.linalg.det(...)
+    for i in range(len(t)):
+        body_dets[i] = np.linalg.det(ECE569_JacobianBody(B, thetaAll[:, i]))
     plt.plot(t, body_dets, '-')
     plt.xlabel('t (seconds)')
     plt.ylabel('det of J_B')
@@ -719,8 +745,7 @@ def main():
     # led = 1 means the led is on, led = 0 means the led is off
     led = np.ones_like(t)
     data = np.column_stack((t, thetaAll.T, led))
-    # TODO: replace the csv filename with your own
-    # np.savetxt('ldihel.csv', data, delimiter=',')
+    np.savetxt('jlove.csv', data, delimiter=',')
 
 
 if __name__ == "__main__":

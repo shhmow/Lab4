@@ -3,3 +3,16 @@ ws4/install
 ws4/log
 ws4/src/Universal_Robots_ROS2_Description/
 __pycache__
+problem1.py
+/venv/
+task1a_lissajous.png
+task1b_alpha.png
+task1c_velocity.png
+problem2c.py
+problem2d.py
+problem3.py
+task2d_trajectory.png
+task2e_manipulability.png
+task3c_joint_diff.png
+task3d_verified_trajectory.png
+task3e_manipulability.png
