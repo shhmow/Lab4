@@ -563,20 +563,20 @@ def bonus():
     theta0 = np.array([-1.6800, -1.4018, -1.8127, -2.9937, -0.8857, -0.0696])
     T0 = ECE569_FKinBody(M, B, theta0)
 
-    # Simple tree, one continuous stroke
+    # Simple tree, one continuous stroke (scaled up 1.5x)
     segments = [
         # Start at origin, go to trunk bottom
-        {'type': 'line', 'start': (0, 0), 'end': (0, -0.06), 'led': 1},
+        {'type': 'line', 'start': (0, 0), 'end': (0, -0.09), 'led': 1},
         # Trunk: bottom to top
-        {'type': 'line', 'start': (0, -0.06), 'end': (0, -0.02), 'led': 1},
+        {'type': 'line', 'start': (0, -0.09), 'end': (0, -0.03), 'led': 1},
         # Go to right corner of triangle
-        {'type': 'line', 'start': (0, -0.02), 'end': (0.05, -0.02), 'led': 1},
+        {'type': 'line', 'start': (0, -0.03), 'end': (0.075, -0.03), 'led': 1},
         # Up to the point (top of tree)
-        {'type': 'line', 'start': (0.05, -0.02), 'end': (0, 0.06), 'led': 1},
+        {'type': 'line', 'start': (0.075, -0.03), 'end': (0, 0.09), 'led': 1},
         # Down to left corner
-        {'type': 'line', 'start': (0, 0.06), 'end': (-0.05, -0.02), 'led': 1},
+        {'type': 'line', 'start': (0, 0.09), 'end': (-0.075, -0.03), 'led': 1},
         # Back to trunk top (closes the triangle)
-        {'type': 'line', 'start': (-0.05, -0.02), 'end': (0, -0.02), 'led': 1},
+        {'type': 'line', 'start': (-0.075, -0.03), 'end': (0, -0.03), 'led': 1},
     ]
 
     dt = 0.002
