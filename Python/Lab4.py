@@ -563,20 +563,43 @@ def bonus():
     theta0 = np.array([-1.6800, -1.4018, -1.8127, -2.9937, -0.8857, -0.0696])
     T0 = ECE569_FKinBody(M, B, theta0)
 
-    # Simple tree, one continuous stroke (scaled up 1.5x)
+    # Tree with star on top, one continuous stroke
+    # Star points (5-pointed, radius 0.025, centered at (0, 0.13))
+    # Drawing order for pentagram: top → bottom-left → top-right → top-left → bottom-right → top
+    star_r = 0.025
+    star_cy = 0.13
+    import math
+    def star_pt(i):
+        angle = math.pi/2 + i * 2*math.pi/5
+        return (star_r * math.cos(angle), star_cy + star_r * math.sin(angle))
+
+    p0 = star_pt(0)  # top
+    p1 = star_pt(1)  # upper left
+    p2 = star_pt(2)  # lower left
+    p3 = star_pt(3)  # lower right
+    p4 = star_pt(4)  # upper right
+
     segments = [
         # Start at origin, go to trunk bottom
-        {'type': 'line', 'start': (0, 0), 'end': (0, -0.09), 'led': 1},
+        {'type': 'line', 'start': (0, 0), 'end': (0, -0.10), 'led': 1},
         # Trunk: bottom to top
-        {'type': 'line', 'start': (0, -0.09), 'end': (0, -0.03), 'led': 1},
+        {'type': 'line', 'start': (0, -0.10), 'end': (0, -0.04), 'led': 1},
         # Go to right corner of triangle
-        {'type': 'line', 'start': (0, -0.03), 'end': (0.075, -0.03), 'led': 1},
+        {'type': 'line', 'start': (0, -0.04), 'end': (0.085, -0.04), 'led': 1},
         # Up to the point (top of tree)
-        {'type': 'line', 'start': (0.075, -0.03), 'end': (0, 0.09), 'led': 1},
+        {'type': 'line', 'start': (0.085, -0.04), 'end': (0, 0.10), 'led': 1},
         # Down to left corner
-        {'type': 'line', 'start': (0, 0.09), 'end': (-0.075, -0.03), 'led': 1},
+        {'type': 'line', 'start': (0, 0.10), 'end': (-0.085, -0.04), 'led': 1},
         # Back to trunk top (closes the triangle)
-        {'type': 'line', 'start': (-0.075, -0.03), 'end': (0, -0.03), 'led': 1},
+        {'type': 'line', 'start': (-0.085, -0.04), 'end': (0, -0.04), 'led': 1},
+        # Go up to star
+        {'type': 'line', 'start': (0, -0.04), 'end': p0, 'led': 1},
+        # Draw star (pentagram pattern: 0→2→4→1→3→0)
+        {'type': 'line', 'start': p0, 'end': p2, 'led': 1},
+        {'type': 'line', 'start': p2, 'end': p4, 'led': 1},
+        {'type': 'line', 'start': p4, 'end': p1, 'led': 1},
+        {'type': 'line', 'start': p1, 'end': p3, 'led': 1},
+        {'type': 'line', 'start': p3, 'end': p0, 'led': 1},
     ]
 
     dt = 0.002
