@@ -534,6 +534,225 @@ def g(t, T, ta):
 def trapezoid(t, T, ta):
     return g(t, T, ta)
 
+def bonus():
+    """Bonus: Light-painting 'JL' initials"""
+
+    # Robot parameters
+    L1 = 0.2435
+    L2 = 0.2132
+    W1 = 0.1311
+    W2 = 0.0921
+    H1 = 0.1519
+    H2 = 0.0854
+
+    M = np.array([[-1, 0, 0, L1 + L2],
+                  [0, 0, 1, W1 + W2],
+                  [0, 1, 0, H1 - H2],
+                  [0, 0, 0, 1]])
+
+    S1 = np.array([0, 0, 1, 0, 0, 0])
+    S2 = np.array([0, 1, 0, -H1, 0, 0])
+    S3 = np.array([0, 1, 0, -H1, 0, L1])
+    S4 = np.array([0, 1, 0, -H1, 0, L1 + L2])
+    S5 = np.array([0, 0, -1, -W1, L1+L2, 0])
+    S6 = np.array([0, 1, 0, H2-H1, 0, L1+L2])
+    S = np.array([S1, S2, S3, S4, S5, S6]).T
+
+    B = np.dot(np.linalg.inv(ECE569_Adjoint(M)), S)
+
+    theta0 = np.array([-1.6800, -1.4018, -1.8127, -2.9937, -0.8857, -0.0696])
+    T0 = ECE569_FKinBody(M, B, theta0)
+
+    # Define letter segments - supports 'line' and 'arc' types
+    segments = [
+        # J - top bar (left to right)
+        {'type': 'line', 'start': (-0.06, 0.05), 'end': (-0.02, 0.05), 'led': 1},
+        # Move back to middle of J top
+        {'type': 'line', 'start': (-0.02, 0.05), 'end': (-0.04, 0.05), 'led': 0},
+        # J - vertical stroke down
+        {'type': 'line', 'start': (-0.04, 0.05), 'end': (-0.04, -0.03), 'led': 1},
+        # J - bottom curve (quarter circle curving left and down)
+        {'type': 'arc', 'center': (-0.06, -0.03), 'radius': 0.02,
+         'start_angle': 0, 'end_angle': -np.pi/2, 'led': 1},
+        # Move to L start (LED off)
+        {'type': 'line', 'start': (-0.06, -0.05), 'end': (0.02, 0.05), 'led': 0},
+        # L - vertical stroke down
+        {'type': 'line', 'start': (0.02, 0.05), 'end': (0.02, -0.05), 'led': 1},
+        # L - horizontal stroke right
+        {'type': 'line', 'start': (0.02, -0.05), 'end': (0.08, -0.05), 'led': 1},
+    ]
+
+    dt = 0.002 
+    target_velocity = 0.15 
+
+    all_x = []
+    all_y = []
+    all_led = []
+    all_t = []
+    current_time = 0.0
+
+    for seg in segments:
+        led = seg['led']
+
+        if seg['type'] == 'line':
+            x0, y0 = seg['start']
+            x1, y1 = seg['end']
+            dist = np.sqrt((x1 - x0)**2 + (y1 - y0)**2)
+            if dist < 1e-6:
+                continue
+        elif seg['type'] == 'arc':
+            cx, cy = seg['center']
+            r = seg['radius']
+            theta_start = seg['start_angle']
+            theta_end = seg['end_angle']
+            arc_angle = abs(theta_end - theta_start)
+            dist = r * arc_angle 
+
+        seg_time = max(dist / target_velocity, 0.5)
+        ta = 0.15 * seg_time 
+
+        n_points = int(seg_time / dt) + 1
+        seg_t = np.linspace(0, seg_time, n_points)
+
+        alpha = np.zeros(n_points)
+        for i in range(1, n_points):
+            g_val = g(seg_t[i-1], seg_time, ta)
+            alpha_dot = g_val / seg_time  
+            alpha[i] = alpha[i-1] + alpha_dot * dt
+
+        alpha = np.clip(alpha, 0, 1)
+
+        if seg['type'] == 'line':
+            seg_x = x0 + alpha * (x1 - x0)
+            seg_y = y0 + alpha * (y1 - y0)
+        elif seg['type'] == 'arc':
+            theta = theta_start + alpha * (theta_end - theta_start)
+            seg_x = cx + r * np.cos(theta)
+            seg_y = cy + r * np.sin(theta)
+
+        start_idx = 0 if len(all_x) == 0 else 1
+        all_x.extend(seg_x[start_idx:])
+        all_y.extend(seg_y[start_idx:])
+        all_led.extend([led] * (n_points - start_idx))
+        all_t.extend((current_time + seg_t[start_idx:]).tolist())
+
+        current_time += seg_time
+
+    x = np.array(all_x)
+    y = np.array(all_y)
+    led = np.array(all_led)
+    t = np.array(all_t)
+
+    print(f"Total trajectory time: {t[-1]:.2f} seconds")
+    print(f"Number of points: {len(t)}")
+
+    Tsd = np.zeros((4, 4, len(t)))
+    for i in range(len(t)):
+        Td = np.eye(4)
+        Td[0, 3] = x[i]
+        Td[1, 3] = y[i]
+        Td[2, 3] = 0
+        Tsd[:, :, i] = T0 @ Td
+
+    xs = Tsd[0, 3, :]
+    ys = Tsd[1, 3, :]
+    zs = Tsd[2, 3, :]
+
+    ax = plt.figure().add_subplot(projection='3d')
+    for i in range(len(t) - 1):
+        color = 'b-' if led[i] == 1 else 'r--'
+        ax.plot([xs[i], xs[i+1]], [ys[i], ys[i+1]], [zs[i], zs[i+1]], color, alpha=0.7)
+    ax.plot(xs[0], ys[0], zs[0], 'go', markersize=10, label='start')
+    ax.plot(xs[-1], ys[-1], zs[-1], 'rx', markersize=10, label='end')
+    ax.set_title('JL Trajectory (blue=LED on, red=LED off)')
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_zlabel('z (m)')
+    ax.legend()
+    plt.show()
+
+    thetaAll = np.zeros((6, len(t)))
+    eomg = 1e-6
+    ev = 1e-6
+
+    initialguess = theta0
+    for i in range(len(t)):
+        if i > 0:
+            initialguess = thetaAll[:, i-1]
+        thetaSol, success = ECE569_IKinBody(B, M, Tsd[:,:,i], initialguess, eomg, ev)
+        if not success:
+            raise Exception(f'Failed to find IK solution at index {i}')
+        thetaAll[:, i] = thetaSol
+
+    print("IK solved successfully for all points!")
+
+    dtheta = np.diff(thetaAll, axis=1) / dt
+    max_joint_vel_rad = np.max(np.abs(dtheta))
+    max_joint_vel_deg = np.rad2deg(max_joint_vel_rad)
+    print(f"Max joint velocity: {max_joint_vel_deg:.2f} deg/s (limit: 100 deg/s)")
+
+    dx = np.diff(x) / dt
+    dy = np.diff(y) / dt
+    ee_vel = np.sqrt(dx**2 + dy**2)
+    max_ee_vel = np.max(ee_vel)
+    print(f"Max end-effector velocity: {max_ee_vel:.3f} m/s (limit: 0.5 m/s)")
+
+    plt.figure()
+    plt.plot(t[1:], dtheta[0], label='joint 1')
+    plt.plot(t[1:], dtheta[1], label='joint 2')
+    plt.plot(t[1:], dtheta[2], label='joint 3')
+    plt.plot(t[1:], dtheta[3], label='joint 4')
+    plt.plot(t[1:], dtheta[4], label='joint 5')
+    plt.plot(t[1:], dtheta[5], label='joint 6')
+    plt.axhline(y=1.745, color='r', linestyle='--', label='100 deg/s limit')
+    plt.axhline(y=-1.745, color='r', linestyle='--')
+    plt.xlabel('t (seconds)')
+    plt.ylabel('Joint velocity (rad/s)')
+    plt.title('Joint Velocities')
+    plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+    body_dets = np.zeros(len(t))
+    for i in range(len(t)):
+        body_dets[i] = np.linalg.det(ECE569_JacobianBody(B, thetaAll[:, i]))
+    plt.figure()
+    plt.plot(t, body_dets)
+    plt.xlabel('t (seconds)')
+    plt.ylabel('det(J_B)')
+    plt.title('Manipulability')
+    plt.grid()
+    plt.show()
+
+    actual_Tsd = np.zeros((4, 4, len(t)))
+    for i in range(len(t)):
+        actual_Tsd[:,:,i] = ECE569_FKinBody(M, B, thetaAll[:, i])
+
+    xs_actual = actual_Tsd[0, 3, :]
+    ys_actual = actual_Tsd[1, 3, :]
+    zs_actual = actual_Tsd[2, 3, :]
+
+    ax = plt.figure().add_subplot(projection='3d')
+    for i in range(len(t) - 1):
+        color = 'b-' if led[i] == 1 else 'r--'
+        ax.plot([xs_actual[i], xs_actual[i+1]], [ys_actual[i], ys_actual[i+1]],
+                [zs_actual[i], zs_actual[i+1]], color, alpha=0.7)
+    ax.plot(xs_actual[0], ys_actual[0], zs_actual[0], 'go', markersize=10, label='start')
+    ax.plot(xs_actual[-1], ys_actual[-1], zs_actual[-1], 'rx', markersize=10, label='end')
+    ax.set_title('Verified JL Trajectory')
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_zlabel('z (m)')
+    ax.legend()
+    plt.show()
+
+    # Save to CSV
+    data = np.column_stack((t, thetaAll.T, led))
+    np.savetxt('jplove_bonus.csv', data, delimiter=',')
+    print(f"Saved trajectory to jplove_bonus.csv")
+
+
 def main():
 
     ### Step 1: Trajectory Generation
@@ -749,4 +968,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()  # Uncomment this for the main assignment
+    bonus()   # Run the bonus JL trajectory
