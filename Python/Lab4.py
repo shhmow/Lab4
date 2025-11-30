@@ -565,6 +565,8 @@ def bonus():
 
     # Define letter segments - supports 'line' and 'arc' types
     segments = [
+        # Move from origin (T0) to start of J (LED off)
+        {'type': 'line', 'start': (0, 0), 'end': (-0.06, 0.05), 'led': 0},
         # J - top bar (left to right)
         {'type': 'line', 'start': (-0.06, 0.05), 'end': (-0.02, 0.05), 'led': 1},
         # Move back to middle of J top
@@ -646,13 +648,12 @@ def bonus():
     print(f"Total trajectory time: {t[-1]:.2f} seconds")
     print(f"Number of points: {len(t)}")
 
-    # Draw on horizontal plane (tool XZ plane ≈ world XY plane)
     Tsd = np.zeros((4, 4, len(t)))
     for i in range(len(t)):
         Td = np.eye(4)
-        Td[0, 3] = x[i]   # Tool X (horizontal)
-        Td[1, 3] = 0      # Tool Y (vertical - keep flat)
-        Td[2, 3] = y[i]   # Tool Z (horizontal)
+        Td[0, 3] = x[i]
+        Td[1, 3] = y[i]
+        Td[2, 3] = 0
         Tsd[:, :, i] = T0 @ Td
 
     xs = Tsd[0, 3, :]
