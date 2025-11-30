@@ -563,25 +563,20 @@ def bonus():
     theta0 = np.array([-1.6800, -1.4018, -1.8127, -2.9937, -0.8857, -0.0696])
     T0 = ECE569_FKinBody(M, B, theta0)
 
-    # Define letter segments - supports 'line' and 'arc' types
+    # Simple tree, one continuous stroke
     segments = [
-        # Move from origin (T0) to start of J (LED off)
-        {'type': 'line', 'start': (0, 0), 'end': (-0.06, 0.05), 'led': 0},
-        # J - top bar (left to right)
-        {'type': 'line', 'start': (-0.06, 0.05), 'end': (-0.02, 0.05), 'led': 1},
-        # Move back to middle of J top
-        {'type': 'line', 'start': (-0.02, 0.05), 'end': (-0.04, 0.05), 'led': 0},
-        # J - vertical stroke down
-        {'type': 'line', 'start': (-0.04, 0.05), 'end': (-0.04, -0.03), 'led': 1},
-        # J - bottom curve (quarter circle curving left and down)
-        {'type': 'arc', 'center': (-0.06, -0.03), 'radius': 0.02,
-         'start_angle': 0, 'end_angle': -np.pi/2, 'led': 1},
-        # Move to L start (LED off)
-        {'type': 'line', 'start': (-0.06, -0.05), 'end': (0.02, 0.05), 'led': 0},
-        # L - vertical stroke down
-        {'type': 'line', 'start': (0.02, 0.05), 'end': (0.02, -0.05), 'led': 1},
-        # L - horizontal stroke right
-        {'type': 'line', 'start': (0.02, -0.05), 'end': (0.08, -0.05), 'led': 1},
+        # Start at origin, go to trunk bottom
+        {'type': 'line', 'start': (0, 0), 'end': (0, -0.06), 'led': 1},
+        # Trunk: bottom to top
+        {'type': 'line', 'start': (0, -0.06), 'end': (0, -0.02), 'led': 1},
+        # Go to right corner of triangle
+        {'type': 'line', 'start': (0, -0.02), 'end': (0.05, -0.02), 'led': 1},
+        # Up to the point (top of tree)
+        {'type': 'line', 'start': (0.05, -0.02), 'end': (0, 0.06), 'led': 1},
+        # Down to left corner
+        {'type': 'line', 'start': (0, 0.06), 'end': (-0.05, -0.02), 'led': 1},
+        # Back to trunk top (closes the triangle)
+        {'type': 'line', 'start': (-0.05, -0.02), 'end': (0, -0.02), 'led': 1},
     ]
 
     dt = 0.002
@@ -648,9 +643,17 @@ def bonus():
     print(f"Total trajectory time: {t[-1]:.2f} seconds")
     print(f"Number of points: {len(t)}")
 
+    # Rotation around Z axis by 45 degrees
+    angle = np.pi / 4  # 45 degrees
+    c, s = np.cos(angle), np.sin(angle)
+    Rz = np.array([[c, -s, 0],
+                   [s,  c, 0],
+                   [0,  0, 1]])
+
     Tsd = np.zeros((4, 4, len(t)))
     for i in range(len(t)):
         Td = np.eye(4)
+        Td[0:3, 0:3] = Rz  # Apply rotation around Z
         Td[0, 3] = x[i]
         Td[1, 3] = y[i]
         Td[2, 3] = 0
@@ -666,7 +669,7 @@ def bonus():
         ax.plot([xs[i], xs[i+1]], [ys[i], ys[i+1]], [zs[i], zs[i+1]], color, alpha=0.7)
     ax.plot(xs[0], ys[0], zs[0], 'go', markersize=10, label='start')
     ax.plot(xs[-1], ys[-1], zs[-1], 'rx', markersize=10, label='end')
-    ax.set_title('JL Trajectory (blue=LED on, red=LED off)')
+    ax.set_title('Tree Trajectory (rotated 45 deg around Z)')
     ax.set_xlabel('x (m)')
     ax.set_ylabel('y (m)')
     ax.set_zlabel('z (m)')
